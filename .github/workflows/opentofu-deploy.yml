@@ -1,0 +1,27 @@
+name: OpenTofu Deploy
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+concurrency: sample-api-platform-prd-state
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: prd
+    steps:
+      - uses: actions/checkout@v4
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.11.5
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+      - working-directory: terraform
+        run: tofu init -input=false
+      - working-directory: terraform
+        run: tofu plan -input=false -out=deploy.tfplan
+      - working-directory: terraform
+        run: tofu apply -input=false deploy.tfplan
