@@ -115,7 +115,9 @@ The item model is:
 Behavior:
 
 - POST creates an item and returns `201`.
-- GET collection uses a paginated DynamoDB `Scan` and returns `200`.
+- GET collection uses a paginated DynamoDB `Scan` and returns `200` with
+  `{"items": [...], "cursor": "<opaque>"}`. The cursor is `null` on the last
+  page.
 - GET by ID returns `200` or `404`.
 - PUT performs a full upsert and returns `200`.
 - PATCH updates at least one supported field, requires the item to exist, and

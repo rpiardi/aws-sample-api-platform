@@ -28,10 +28,10 @@ resource "aws_api_gateway_resource" "item" {
 }
 
 resource "aws_api_gateway_request_validator" "body" {
-  name                        = "validate-body"
+  name                        = "validate-request"
   rest_api_id                 = aws_api_gateway_rest_api.api.id
   validate_request_body       = true
-  validate_request_parameters = false
+  validate_request_parameters = true
 }
 
 resource "aws_api_gateway_model" "write" {
@@ -81,7 +81,10 @@ resource "aws_api_gateway_method" "method" {
   authorization        = "COGNITO_USER_POOLS"
   authorizer_id        = aws_api_gateway_authorizer.cognito.id
   authorization_scopes = [each.value.scope]
-  request_validator_id = each.value.model == null ? null : aws_api_gateway_request_validator.body.id
+  request_validator_id = each.value.model != null || each.value.resource == aws_api_gateway_resource.item.id ? aws_api_gateway_request_validator.body.id : null
+  request_parameters = each.value.resource == aws_api_gateway_resource.item.id ? {
+    "method.request.path.itemId" = true
+  } : {}
   request_models = each.value.model == "write" ? { "application/json" = aws_api_gateway_model.write.name } : (
     each.value.model == "patch" ? { "application/json" = aws_api_gateway_model.patch.name } : {}
   )
@@ -131,4 +134,11 @@ resource "aws_api_gateway_stage" "prd" {
       responseLength = "$context.responseLength"
     })
   }
+}
+
+resource "aws_api_gateway_base_path_mapping" "sample_api" {
+  api_id      = aws_api_gateway_rest_api.api.id
+  stage_name  = aws_api_gateway_stage.prd.stage_name
+  domain_name = var.custom_domain_name
+  base_path   = var.custom_domain_base_path
 }
