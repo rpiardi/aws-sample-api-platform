@@ -25,9 +25,10 @@ tofu init
 tofu plan
 ```
 
-O workflow manual `OpenTofu Deploy` executa plan e apply no mesmo job, somente
-na branch protegida `main` e no environment `prd`. Configure
-`vars.AWS_ROLE_ARN` como:
+O workflow manual `OpenTofu Deployment` permite escolher `plan` (operação
+padrão) ou `apply`. Ambas as operações criam um plano salvo; `apply` aplica
+esse mesmo plano no mesmo job. O workflow roda somente na branch protegida
+`main` e no environment `prd`. Configure `vars.AWS_ROLE_ARN` como:
 
 ```text
 arn:aws:iam::209479281611:role/SampleApiPlatformGitHubDeployer
