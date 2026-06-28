@@ -2,6 +2,7 @@ data "archive_file" "common" {
   type        = "zip"
   source_dir  = "${path.module}/../src/common"
   output_path = "${path.module}/common.zip"
+  excludes    = ["**/__pycache__/**", "**/*.pyc", "**/*.pyo"]
 }
 
 data "archive_file" "function" {
@@ -9,6 +10,7 @@ data "archive_file" "function" {
   type        = "zip"
   source_dir  = "${path.module}/../src/${each.key}"
   output_path = "${path.module}/${each.key}.zip"
+  excludes    = ["**/__pycache__/**", "**/*.pyc", "**/*.pyo"]
 }
 
 resource "aws_lambda_layer_version" "common" {
