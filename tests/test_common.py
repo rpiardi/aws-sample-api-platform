@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 import types
@@ -72,6 +73,58 @@ class CommonTests(unittest.TestCase):
     def test_delete_is_idempotent(self):
         sample_common.delete("missing")
         table.delete_item.assert_called_once_with(Key={"id": "missing"})
+
+
+class PartnerContextTests(unittest.TestCase):
+    @staticmethod
+    def _event(claims):
+        return {"requestContext": {"authorizer": {"claims": claims}}}
+
+    def test_resolves_identity_from_claims(self):
+        partner = sample_common.resolve_partner_context(
+            self._event({"partner_id": "PARTNER-001", "tenant": "acme", "client_id": "abc"})
+        )
+        self.assertEqual(partner.partner_id, "PARTNER-001")
+        self.assertEqual(partner.tenant, "acme")
+        self.assertEqual(partner.client_id, "abc")
+        self.assertEqual(partner.approach, "A")
+
+    def test_missing_or_empty_claims_fail_closed(self):
+        for claims in ({}, {"partner_id": "PARTNER-001"}, {"tenant": "acme"}, {"partner_id": "", "tenant": "acme"}):
+            with self.assertRaises(sample_common.PartnerAccessDenied):
+                sample_common.resolve_partner_context(self._event(claims))
+
+    def test_missing_authorizer_fails_closed(self):
+        with self.assertRaises(sample_common.PartnerAccessDenied):
+            sample_common.resolve_partner_context({})
+
+    def test_decorator_passes_partner_and_blocks_on_missing_claims(self):
+        seen = {}
+
+        @sample_common.with_partner_context
+        def handler(event, context, partner):
+            seen["partner"] = partner
+            return sample_common.response(200)
+
+        ok = handler(self._event({"partner_id": "P", "tenant": "t"}), None)
+        self.assertEqual(ok["statusCode"], 200)
+        self.assertEqual(seen["partner"].partner_id, "P")
+
+        denied = handler({}, None)
+        self.assertEqual(denied["statusCode"], 403)
+        self.assertEqual(json.loads(denied["body"])["error"], "Forbidden")
+
+    def test_resolved_log_excludes_secrets(self):
+        partner = sample_common.PartnerContext("PARTNER-001", "acme", "abc")
+        with self.assertLogs(sample_common.logger, level="INFO") as captured:
+            sample_common.log_request_context(
+                {"httpMethod": "GET", "resource": "/v1/items"}, None, partner
+            )
+        line = captured.output[0]
+        self.assertIn("partner_context_resolved", line)
+        self.assertIn("PARTNER-001", line)
+        for secret in ("client_secret", "Authorization", "Bearer"):
+            self.assertNotIn(secret, line)
 
 
 if __name__ == "__main__":

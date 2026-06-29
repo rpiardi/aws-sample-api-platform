@@ -1,7 +1,8 @@
-from sample_common import create, error, parse_body, response
+from sample_common import create, error, parse_body, response, with_partner_context
 
 
-def lambda_handler(event, context):
+@with_partner_context
+def lambda_handler(event, context, partner):
     try:
         return response(201, create(parse_body(event)))
     except ValueError as exc:

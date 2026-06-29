@@ -1,5 +1,7 @@
 import base64
+import functools
 import json
+import logging
 import os
 import uuid
 from decimal import Decimal
@@ -7,7 +9,13 @@ from decimal import Decimal
 import boto3
 from botocore.exceptions import ClientError
 
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
 _table = boto3.resource("dynamodb").Table(os.environ["TABLE_NAME"])
+
+# Tracks the first invocation of each warm execution environment for logging.
+_cold_start = True
 
 
 def response(status, body=None):
@@ -19,6 +27,90 @@ def response(status, body=None):
 
 def error(status, code, message):
     return response(status, {"error": code, "message": message})
+
+
+# --- Partner identity (Approach A) ---
+#
+# Identity is resolved at token issuance by the auth-platform Pre Token
+# Generation trigger and arrives as signed access-token claims, exposed by the
+# native Cognito authorizer under requestContext.authorizer.claims. Handlers
+# never look identity up and never read it from headers, query, or body. This
+# adapter only reads and validates presence (defense in depth) and fails closed.
+
+
+class PartnerAccessDenied(Exception):
+    """Raised when partner identity claims are absent or empty."""
+
+
+class PartnerContext:
+    __slots__ = ("partner_id", "tenant", "client_id", "approach")
+
+    def __init__(self, partner_id, tenant, client_id=None, approach="A"):
+        self.partner_id = partner_id
+        self.tenant = tenant
+        self.client_id = client_id
+        self.approach = approach
+
+
+def resolve_partner_context(event):
+    claims = (((event or {}).get("requestContext") or {}).get("authorizer") or {}).get("claims") or {}
+    partner_id = claims.get("partner_id")
+    tenant = claims.get("tenant")
+    if not partner_id or not tenant:
+        raise PartnerAccessDenied()
+    return PartnerContext(partner_id, tenant, claims.get("client_id"))
+
+
+def log_request_context(event, context, partner):
+    global _cold_start
+    logger.info(
+        json.dumps(
+            {
+                "event": "partner_context_resolved",
+                "approach": "A",
+                "request_id": getattr(context, "aws_request_id", None),
+                "http_method": event.get("httpMethod"),
+                "resource_path": event.get("resource") or event.get("path"),
+                "partner_id": partner.partner_id,
+                "tenant": partner.tenant,
+                "cold_start": _cold_start,
+            }
+        )
+    )
+    _cold_start = False
+
+
+def log_partner_rejected(event, context, reason="missing_claims"):
+    logger.info(
+        json.dumps(
+            {
+                "event": "partner_context_rejected",
+                "approach": "A",
+                "reason": reason,
+                "request_id": getattr(context, "aws_request_id", None),
+            }
+        )
+    )
+
+
+def with_partner_context(handler):
+    """Resolve and log partner identity before the business handler runs.
+
+    Fails closed with 403 when identity claims are missing. The wrapped handler
+    receives the resolved PartnerContext as a third argument.
+    """
+
+    @functools.wraps(handler)
+    def wrapper(event, context):
+        try:
+            partner = resolve_partner_context(event)
+        except PartnerAccessDenied:
+            log_partner_rejected(event, context)
+            return error(403, "Forbidden", "Access denied")
+        log_request_context(event, context, partner)
+        return handler(event, context, partner)
+
+    return wrapper
 
 
 def parse_body(event):

@@ -1,7 +1,8 @@
-from sample_common import delete, error, response
+from sample_common import delete, error, response, with_partner_context
 
 
-def lambda_handler(event, context):
+@with_partner_context
+def lambda_handler(event, context, partner):
     try:
         delete(event["pathParameters"]["itemId"])
         return response(204)

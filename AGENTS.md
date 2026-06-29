@@ -134,8 +134,10 @@ Application errors use:
 {"error": "ValidationError", "message": "..."}
 ```
 
-Supported application error codes are `ValidationError`, `NotFound`, and
-`InternalError`. Do not leak stack traces or internal AWS errors to callers.
+Supported application error codes are `ValidationError`, `NotFound`,
+`Forbidden`, and `InternalError`. Do not leak stack traces or internal AWS
+errors to callers. `Forbidden` (HTTP 403) is returned only by the partner
+identity defense-in-depth check described under Authorization.
 
 ## Authorization
 
@@ -166,6 +168,27 @@ POST, PUT, PATCH, DELETE    = m2m-prd/write
 
 Token validation and scope enforcement happen at API Gateway before Lambda
 invocation.
+
+### Partner identity (Approach A)
+
+The auth-platform resolves the calling client to a partner identity
+(`partner_id`, `tenant`) at token issuance and signs it into the access token.
+The native authorizer exposes those claims under
+`requestContext.authorizer.claims`.
+
+This repository only consumes the claims; it never resolves identity and never
+reads the `auth-partners` table:
+
+- the common layer reads `partner_id`/`tenant` from the claims and validates
+  their presence (defense in depth), failing closed with `403 Forbidden` when
+  absent — this is reachable only on misconfiguration, since the authorizer and
+  trigger normally guarantee the claims;
+- identity is never accepted from headers, query string, or body
+  (`X-Partner-Id`/`X-Tenant-Id` are ignored);
+- identity is never stored on the item nor returned in any response;
+- handlers resolve identity before any DynamoDB access.
+
+Do not add a lookup of partner data in this repository.
 
 ## DynamoDB
 
