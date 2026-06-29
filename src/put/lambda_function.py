@@ -1,7 +1,8 @@
-from sample_common import error, parse_body, put, response
+from sample_common import error, parse_body, put, response, with_partner_context
 
 
-def lambda_handler(event, context):
+@with_partner_context
+def lambda_handler(event, context, partner):
     try:
         item_id = event["pathParameters"]["itemId"]
         return response(200, put(item_id, parse_body(event)))

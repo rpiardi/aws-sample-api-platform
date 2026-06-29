@@ -1,7 +1,8 @@
-from sample_common import error, get, list_items, parse_pagination, response
+from sample_common import error, get, list_items, parse_pagination, response, with_partner_context
 
 
-def lambda_handler(event, context):
+@with_partner_context
+def lambda_handler(event, context, partner):
     try:
         item_id = (event.get("pathParameters") or {}).get("itemId")
         if item_id:
